@@ -58,10 +58,19 @@ Ponowne uruchomienie instalatora aktualizuje skrypty, zachowując zapisane regu�
 **Najprościej: launcher.** Dwuklik w `Uruchom-OBS.cmd` (przy zamkniętym OBS) instaluje lub aktualizuje dodatki z adresem serwera turnieju i od razu uruchamia OBS. Ustawienia są w `launcher.json`, który powstaje przy pierwszym uruchomieniu (nie trafia do Git):
 
 ```json
-{ "server": "https://turniej.kirsiak.com", "obsPath": "", "collection": "", "microphone": "", "intro": "", "loop": "" }
+{ "server": "https://turniej.kirsiak.com", "obsPath": "", "collection": "", "microphone": "", "intro": "", "loop": "",
+  "timesSquare": "..\\Times-Square-OBS", "timesSquareAtlas": "" }
 ```
 
-`server` to adres serwera turnieju (na turnieju np. `http://192.168.1.10:3000`), `obsPath` zostaje pusty, jeśli OBS jest w standardowym katalogu, `collection` wybiera kolekcję scen przy starcie, `microphone` to dokładna nazwa mikrofonu wyciszanego na przerwie, a `intro` i `loop` to pliki audio przerwy. Launcher nie zamyka OBS, ostrzega, gdy serwer nie odpowiada (OBS i tak ruszy), a przy kolejnych uruchomieniach nie pobiera ponownie bibliotek. Próba bez instalacji: `Uruchom-OBS.ps1 -DryRun`.
+`server` to adres serwera turnieju (na turnieju np. `http://192.168.1.10:3000`), `obsPath` zostaje pusty, jeśli OBS jest w standardowym katalogu, `collection` wybiera kolekcję scen przy starcie, `microphone` to dokładna nazwa mikrofonu wyciszanego na przerwie, a `intro` i `loop` to pliki audio przerwy. `timesSquare` to katalog repozytorium Times-Square-OBS (otwarcie przed turniejem), a `timesSquareAtlas` zostaje pusty, jeśli film leży w jego domyślnym miejscu.
+
+Launcher nie zamyka OBS, ostrzega, gdy serwer nie odpowiada (OBS i tak ruszy), a przy kolejnych uruchomieniach nie pobiera ponownie bibliotek. Próba bez instalacji: `Uruchom-OBS.ps1 -DryRun`.
+
+### Otwarcie na Times Square
+
+Przed startem turnieju (jeszcze bez rundy) OBS pokazuje scenę **„02 | Times Square LIVE”**: billboardy Times Square z planszą „Nadajemy na żywo — spokojnie, bez stresu, bawcie się dobrze” (strona `/start.html` serwera turnieju). Gdy koordynator rozpocznie pierwszą rundę, OBS sam przechodzi na „Turniej — Ekran”. Efekt pochodzi z repozytorium [Times-Square-OBS](https://github.com/TTCenjoyer/Times-Square-OBS), którego sceny `install.py --times-square` dokłada do aktywnej kolekcji (istniejące źródła zostają, kolizje identyfikatorów są naprawiane, ponowna instalacja tylko aktualizuje ścieżki).
+
+Launcher sam pobiera to repozytorium (`timesSquare`, domyślnie obok tego folderu) i buduje film pomocniczy (ok. 3,3 GB, kilka minut), ale pyta o zgodę. Bez zgody, bez gita albo przy błędzie otwarcie jest pomijane i turniej zaczyna się od razu od ekranu turnieju. Aby wyłączyć otwarcie, wpisz pusty `timesSquare`. Nazwę sceny otwarcia ustawisz we właściwościach `turniej.py`. Tekst na billboardach jest w `public/start.html` w repozytorium turnieju.
 
 Ręcznie: skrypt `turniej.py` łączy OBS z serwerem turnieju (`node server.js`, domyślnie port 3000). OBS na komputerze podłączonym do tablicy obsługuje wtedy główny ekran widowni.
 

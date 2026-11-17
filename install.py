@@ -20,6 +20,10 @@ import uuid
 SCRIPTS = ('przerwa.lua', 'przejscia-scen.lua', 'panel-przejsc.py', 'turniej.py')
 FILES = SCRIPTS + ('panel.html',)
 DEFAULT_TOURNAMENT_SERVER = 'http://localhost:3000'
+TS_SCENES = ('01 | Obraz na billboardach', '02 | Times Square LIVE')
+TS_PLACEHOLDER = 'Plansza LIVE - ukryj po dodaniu swojego obrazu'
+TS_BOARD = 'Turniej | Plansza na billboardy'
+TS_SCRIPT = 'times-square-live.lua'
 BREAK_SCENE = 'Przerwa — Beyond the Sea'
 
 
@@ -46,7 +50,67 @@ def ini_set(text, section, key, value):
     return text[:header.end()] + body + text[end:]
 
 
-def configure_collection(original, target, microphone=None, intro=None, loop=None, tournament_server=None):
+def merge_times_square(original, repo, atlas, server=None):
+    """Dodaje do kolekcji sceny Times Square (2 sceny, film pomocniczy z filtrem, plansza z turnieju).
+
+    Istniejące źródła o tych samych nazwach są tylko aktualizowane (ścieżka filmu, adres planszy); reszta kolekcji
+    zostaje bez zmian. Plansza na billboardach to strona /start.html serwera turnieju."""
+    data = copy.deepcopy(original)
+    repo, atlas = Path(repo), Path(atlas)
+    template = json.loads((repo / 'obs' / 'scene-collection.template.json').read_text(encoding='utf-8')
+                          .replace('${ROOT}', repo.as_posix()))
+    sources = data.setdefault('sources', [])
+    existing = {s.get('name'): s for s in sources}
+    used = {s.get('uuid') for s in sources}
+    renames = {TS_PLACEHOLDER: TS_BOARD}
+    final_uuid = {}
+    added = []
+    for src in template['sources']:
+        src = copy.deepcopy(src)
+        src['name'] = renames.get(src['name'], src['name'])
+        old_uuid = src.get('uuid')
+        if src['name'] in existing:
+            final_uuid[old_uuid] = existing[src['name']].get('uuid')
+            continue
+        if old_uuid in used:
+            src['uuid'] = str(uuid.uuid4())
+        final_uuid[old_uuid] = src['uuid']
+        used.add(src['uuid'])
+        added.append(src)
+    for src in added:
+        if src['id'] == 'scene':
+            for item in src['settings'].get('items', []):
+                item['name'] = renames.get(item.get('name'), item.get('name'))
+                item['source_uuid'] = final_uuid.get(item.get('source_uuid'), item.get('source_uuid'))
+        sources.append(src)
+        existing[src['name']] = src
+    board_url = (server or DEFAULT_TOURNAMENT_SERVER).rstrip('/') + '/start.html?obs=1'
+    for src in sources:
+        name = src.get('name')
+        if name == TS_BOARD and src.get('id') == 'browser_source':
+            settings = src.setdefault('settings', {})
+            if server or name in {a['name'] for a in added}:
+                settings.pop('local_file', None)
+                settings.update({'is_local_file': False, 'url': board_url, 'width': 1920, 'height': 1080, 'fps': 30,
+                                 'fps_custom': True, 'reroute_audio': False})
+        if any(f.get('id') == 'times_square_live_v1' for f in src.get('filters', [])):
+            src.setdefault('settings', {})['local_file'] = atlas.as_posix()
+    order = data.setdefault('scene_order', [])
+    for name in TS_SCENES:
+        if not any(o.get('name') == name for o in order):
+            order.append({'name': name})
+    scripts = data.setdefault('modules', {}).setdefault('scripts-tool', [])
+    path = (repo / 'obs' / TS_SCRIPT).as_posix()
+    found = [s for s in scripts if Path(s.get('path', '').replace('\\', '/')).name == TS_SCRIPT]
+    if found:
+        found[0]['path'] = path
+    else:
+        scripts.append({'path': path, 'settings': {}})
+    return data
+
+
+def configure_collection(original, target, microphone=None, intro=None, loop=None, tournament_server=None,
+                         times_square=None):
     """Change only this package's script registrations; retain scenes and sources."""
     data = copy.deepcopy(original)
     scripts = data.setdefault('modules', {}).setdefault('scripts-tool', [])
@@ -80,6 +144,8 @@ def configure_collection(original, target, microphone=None, intro=None, loop=Non
                 settings.setdefault('mic_name', default_mic)
         scripts[:] = [s for s in scripts if s not in matches]
         scripts.append({'path': (target / name).as_posix(), 'settings': settings})
+    if times_square:
+        data = merge_times_square(data, times_square[0], times_square[1], tournament_server)
     return data
 
 
@@ -134,6 +200,8 @@ def main():
     parser.add_argument('--destination', type=Path, help='Stały katalog instalacji')
     parser.add_argument('--microphone', help='Dokładna nazwa źródła mikrofonu wyciszanego na przerwie')
     parser.add_argument('--tournament-server', help='Adres serwera turnieju TTC, np. http://192.168.1.10:3000 (przerwa i sceny według stanu gry)')
+    parser.add_argument('--times-square', type=Path, help='Katalog repozytorium Times-Square-OBS: sceny otwarcia z billboardami Times Square')
+    parser.add_argument('--times-square-atlas', type=Path, help='Film pomocniczy Times Square (domyślnie assets/generated/times-square-live-v2.mkv w repozytorium)')
     parser.add_argument('--skip-dependencies', action='store_true', help='Nie instaluj ponownie PySide6, gdy katalog runtime już istnieje (szybsze ponowne uruchomienie)')
     parser.add_argument('--intro', type=Path, help='Własny plik audio odtwarzany raz')
     parser.add_argument('--loop', type=Path, help='Własny plik audio odtwarzany w pętli')
@@ -167,7 +235,16 @@ def main():
     tournament = args.tournament_server.strip().rstrip('/') if args.tournament_server else None
     if tournament is not None and not tournament.startswith(('http://', 'https://')):
         parser.error('Adres serwera turnieju musi zaczynać się od http:// albo https://')
-    updated = configure_collection(data, target, args.microphone, args.intro, args.loop, tournament)
+    times_square = None
+    if args.times_square is not None:
+        repo = args.times_square.resolve()
+        atlas = (args.times_square_atlas or repo / 'assets' / 'generated' / 'times-square-live-v2.mkv').resolve()
+        if not (repo / 'obs' / 'scene-collection.template.json').is_file():
+            parser.error('To nie jest repozytorium Times-Square-OBS (brak obs/scene-collection.template.json): ' + str(repo))
+        if not atlas.is_file():
+            parser.error('Brak filmu pomocniczego Times Square: ' + str(atlas) + '. Zbuduj go według README Times-Square-OBS (tools/build_atlas.py).')
+        times_square = (repo, atlas)
+    updated = configure_collection(data, target, args.microphone, args.intro, args.loop, tournament, times_square)
 
     target.mkdir(parents=True, exist_ok=True)
     backup = target / 'backups' / datetime.now().strftime('%Y%m%d-%H%M%S-%f')

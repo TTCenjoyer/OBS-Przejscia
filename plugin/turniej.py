@@ -19,12 +19,14 @@ DEFAULT_SERVER = 'http://localhost:3000'
 MAIN_SCENE = 'Turniej — Ekran'
 MAIN_SOURCE = 'Turniej | Ekran'
 BREAK_SCENE = 'Przerwa — Beyond the Sea'
+INTRO_SCENE = '02 | Times Square LIVE'
 POLL_MS = 250
 
 server = DEFAULT_SERVER
 auto_switch = True
 main_scene = MAIN_SCENE
 break_scene = BREAK_SCENE
+intro_scene = INTRO_SCENE
 listener = None
 applied = None  # ostatnio wykonane przełączenie: 'main' albo 'break'
 warned = set()
@@ -66,10 +68,16 @@ def iter_events(lines):
 
 
 def wanted_scene(state):
-    """'break' w przerwie technicznej, inaczej 'main'; None, gdy stan jest nieczytelny."""
+    """'break' w przerwie technicznej, 'intro' przed startem turnieju (jeszcze bez rundy), inaczej 'main'.
+
+    None, gdy stan jest nieczytelny."""
     if not isinstance(state, dict):
         return None
-    return 'break' if state.get('view') == 'break' else 'main'
+    if state.get('view') == 'break':
+        return 'break'
+    if not state.get('round'):
+        return 'intro'
+    return 'main'
 
 
 class Listener(threading.Thread):
@@ -179,6 +187,24 @@ def switch_to(name):
     return True
 
 
+def scene_exists(name):
+    source = obs.obs_get_source_by_name(name)
+    if source:
+        obs.obs_source_release(source)
+    return source is not None
+
+
+def scene_for(kind):
+    if kind == 'break':
+        return break_scene
+    if kind == 'intro':
+        # otwarcie (np. Times Square) tylko jeśli taka scena istnieje; bez niej od razu ekran turnieju
+        if scene_exists(intro_scene):
+            return intro_scene
+        warn_once('intro:' + intro_scene, 'Nie ma sceny otwarcia „' + intro_scene + '”, pokazuję ekran turnieju.')
+    return main_scene
+
+
 def tick():
     global applied
     if listener is None:
@@ -189,9 +215,10 @@ def tick():
     wanted = wanted_scene(state)
     if wanted is None or not auto_switch or wanted == applied:
         return
-    if switch_to(break_scene if wanted == 'break' else main_scene):
+    name = scene_for(wanted)
+    if switch_to(name):
         applied = wanted
-        log(obs.LOG_INFO, 'Turniej: scena „' + (break_scene if wanted == 'break' else main_scene) + '”.')
+        log(obs.LOG_INFO, 'Turniej: scena „' + name + '”.')
 
 
 def on_event(event):
@@ -226,7 +253,7 @@ def script_description():
     if listener is not None:
         status = 'Połączono z serwerem turnieju.' if listener.connected else 'Łączenie z serwerem turnieju… ' + listener.error
     return ('<b>Turniej TTC: sceny OBS według stanu gry</b><br>Przerwa techniczna w turnieju przełącza OBS na scenę przerwy, '
-            'a po niej wraca na scenę z ekranem turnieju. Skrypt tylko czyta stan ekranu widowni.<br><br>' + status)
+            'a po niej wraca na scenę z ekranem turnieju. Przed startem turnieju pokazuje scenę otwarcia (np. Times Square). Skrypt tylko czyta stan ekranu widowni.<br><br>' + status)
 
 
 def script_defaults(settings):
@@ -234,6 +261,7 @@ def script_defaults(settings):
     obs.obs_data_set_default_bool(settings, 'auto_switch', True)
     obs.obs_data_set_default_string(settings, 'main_scene', MAIN_SCENE)
     obs.obs_data_set_default_string(settings, 'break_scene', BREAK_SCENE)
+    obs.obs_data_set_default_string(settings, 'intro_scene', INTRO_SCENE)
 
 
 def script_properties():
@@ -242,19 +270,21 @@ def script_properties():
     obs.obs_properties_add_bool(props, 'auto_switch', 'Przełączaj sceny automatycznie')
     obs.obs_properties_add_text(props, 'main_scene', 'Scena z ekranem turnieju', obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_text(props, 'break_scene', 'Scena przerwy', obs.OBS_TEXT_DEFAULT)
+    obs.obs_properties_add_text(props, 'intro_scene', 'Scena otwarcia (przed startem turnieju)', obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_button(props, 'create', 'Utwórz / napraw scenę ekranu turnieju',
                                   lambda *_: (ensure_main_scene(), True)[1])
     return props
 
 
 def script_update(settings):
-    global server, auto_switch, main_scene, break_scene, applied
+    global server, auto_switch, main_scene, break_scene, intro_scene, applied
     new_server = obs.obs_data_get_string(settings, 'server')
     changed = normalize_server(new_server) != normalize_server(server) or listener is None
     server = new_server
     auto_switch = obs.obs_data_get_bool(settings, 'auto_switch')
     main_scene = obs.obs_data_get_string(settings, 'main_scene') or MAIN_SCENE
     break_scene = obs.obs_data_get_string(settings, 'break_scene') or BREAK_SCENE
+    intro_scene = obs.obs_data_get_string(settings, 'intro_scene') or INTRO_SCENE
     applied = None
     if changed:
         start_listener()

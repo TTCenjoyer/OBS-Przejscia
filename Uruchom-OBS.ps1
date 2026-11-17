@@ -7,6 +7,8 @@ $configPath = Join-Path $root 'launcher.json'
 
 function Info($text) { Write-Host $text }
 function Warn($text) { Write-Host ('UWAGA: ' + $text) -ForegroundColor Yellow }
+function Ask($question) { $answer = Read-Host ($question + ' [T/n]'); return ($answer -eq '' -or $answer -match '^[tTyY]') }
+function Resolve-Config($path) { if ([IO.Path]::IsPathRooted($path)) { return [IO.Path]::GetFullPath($path) } return [IO.Path]::GetFullPath((Join-Path $root $path)) }
 function Fail($text) { Write-Host ('BŁĄD: ' + $text) -ForegroundColor Red; exit 1 }
 
 # --- ustawienia ---
@@ -17,6 +19,8 @@ $defaults = [ordered]@{
     microphone = ''                              # dokładna nazwa mikrofonu wyciszanego na przerwie; pusty = wykryj
     intro      = ''                              # plik audio odtwarzany raz na przerwie
     loop       = ''                              # plik audio w pętli na przerwie
+    timesSquare      = '..\Times-Square-OBS'     # katalog repozytorium Times-Square-OBS (otwarcie przed turniejem); pusty = bez otwarcia
+    timesSquareAtlas = ''                        # film pomocniczy Times Square; pusty = assets\generated	imes-square-live-v2.mkv w repozytorium
 }
 if (-not (Test-Path $configPath)) {
     [IO.File]::WriteAllText($configPath, ($defaults | ConvertTo-Json) + "`n", (New-Object Text.UTF8Encoding($false)))
@@ -48,9 +52,44 @@ try {
     Warn "Serwer turnieju ($server) nie odpowiada. OBS się uruchomi, a skrypt połączy się, gdy serwer ruszy."
 }
 
+# --- Times Square: otwarcie przed turniejem (repozytorium + film pomocniczy) ---
+$timesSquareArgs = @()
+if ($config.timesSquare) {
+    $tsRepo = Resolve-Config ([string]$config.timesSquare)
+    $tsAtlas = if ($config.timesSquareAtlas) { Resolve-Config ([string]$config.timesSquareAtlas) } else { Join-Path $tsRepo 'assets\generated	imes-square-live-v2.mkv' }
+    $tsTemplate = Join-Path $tsRepo 'obs\scene-collection.template.json'
+    if (-not (Test-Path $tsTemplate)) {
+        if ($DryRun) { Info "[DryRun] Brak Times-Square-OBS w $tsRepo (launcher zapytałby o pobranie z GitHuba)." }
+        elseif (-not (Get-Command git -ErrorAction SilentlyContinue)) { Warn 'Brak gita: nie pobiorę Times-Square-OBS. Pobierz repozytorium ręcznie do katalogu z launcher.json (timesSquare).' }
+        elseif (Ask "Pobrać Times-Square-OBS z GitHuba do $tsRepo ?") {
+            & git clone https://github.com/TTCenjoyer/Times-Square-OBS.git $tsRepo
+            if ($LASTEXITCODE -ne 0) { Warn 'Nie udało się pobrać Times-Square-OBS.' }
+        }
+    }
+    if ((Test-Path $tsTemplate) -and -not (Test-Path $tsAtlas)) {
+        if ($DryRun) { Info "[DryRun] Brak filmu Times Square ($tsAtlas); launcher zapytałby o zbudowanie (ok. 3,3 GB, kilka minut)." }
+        elseif (Ask 'Zbudować film Times Square (ok. 3,3 GB, kilka minut, pobiera biblioteki Pythona)?') {
+            $venvPython = Join-Path $tsRepo '.venv\Scripts\python.exe'
+            if (-not (Test-Path $venvPython)) { & py -3.12 -m venv (Join-Path $tsRepo '.venv') }
+            & $venvPython -m pip install -r (Join-Path $tsRepo 'requirements-build.txt')
+            if ($LASTEXITCODE -eq 0) {
+                Push-Location $tsRepo
+                try { & $venvPython (Join-Path $tsRepo 'toolsuild_atlas.py') } finally { Pop-Location }
+            }
+            if ($LASTEXITCODE -ne 0) { Warn 'Budowanie filmu Times Square nie powiodło się; otwarcie zostanie pominięte.' }
+        }
+    }
+    if ((Test-Path $tsTemplate) -and (Test-Path $tsAtlas)) {
+        $timesSquareArgs = @('--times-square', $tsRepo, '--times-square-atlas', $tsAtlas)
+    } else {
+        Warn 'Otwarcie Times Square pominięte (brak repozytorium lub filmu). Turniej zacznie się od razu od ekranu turnieju.'
+    }
+}
+
 # --- instalacja dodatków ---
 if (Get-Process -Name obs64 -ErrorAction SilentlyContinue) {
-    Fail 'OBS jest już uruchomiony. Zamknij go i uruchom launcher ponownie (konfiguracja jest zmieniana tylko przy zamkniętym OBS).'
+    if ($DryRun) { Warn 'OBS jest uruchomiony (w trybie próbnym to tylko ostrzeżenie).' }
+    else { Fail 'OBS jest już uruchomiony. Zamknij go i uruchom launcher ponownie (konfiguracja jest zmieniana tylko przy zamkniętym OBS).' }
 }
 $py = Get-Command py -ErrorAction SilentlyContinue
 if (-not $py) { Fail 'Nie znaleziono Pythona (polecenie py). Zainstaluj 64-bitowy Python 3.12.' }
@@ -59,6 +98,7 @@ if ($config.collection) { $installArgs += @('--collection', ([string]$config.col
 if ($config.microphone) { $installArgs += @('--microphone', ([string]$config.microphone)) }
 if ($config.intro) { $installArgs += @('--intro', ([string]$config.intro)) }
 if ($config.loop) { $installArgs += @('--loop', ([string]$config.loop)) }
+$installArgs += $timesSquareArgs
 if ($DryRun) {
     Info ('[DryRun] py ' + ($installArgs -join ' '))
     Info "[DryRun] OBS: $obs"
