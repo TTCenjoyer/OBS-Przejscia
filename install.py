@@ -17,8 +17,9 @@ import subprocess
 import sys
 import uuid
 
-FILES = ('przerwa.lua', 'przejscia-scen.lua', 'panel-przejsc.py', 'panel.html')
-SCRIPTS = FILES[:3]
+SCRIPTS = ('przerwa.lua', 'przejscia-scen.lua', 'panel-przejsc.py', 'turniej.py')
+FILES = SCRIPTS + ('panel.html',)
+DEFAULT_TOURNAMENT_SERVER = 'http://localhost:3000'
 BREAK_SCENE = 'Przerwa — Beyond the Sea'
 
 
@@ -45,7 +46,7 @@ def ini_set(text, section, key, value):
     return text[:header.end()] + body + text[end:]
 
 
-def configure_collection(original, target, microphone=None, intro=None, loop=None):
+def configure_collection(original, target, microphone=None, intro=None, loop=None, tournament_server=None):
     """Change only this package's script registrations; retain scenes and sources."""
     data = copy.deepcopy(original)
     scripts = data.setdefault('modules', {}).setdefault('scripts-tool', [])
@@ -58,6 +59,16 @@ def configure_collection(original, target, microphone=None, intro=None, loop=Non
                     settings[key] = Path(path).resolve().as_posix()
                 else:
                     settings.setdefault(key, '')
+            # ekran przerwy z serwera turnieju: tylko gdy adres podano (wcześniejszy zostaje przy ponownej instalacji)
+            if tournament_server is not None:
+                settings['tournament_url'] = tournament_server
+            else:
+                settings.setdefault('tournament_url', '')
+        elif name == 'turniej.py':
+            if tournament_server is not None:
+                settings['server'] = tournament_server
+            else:
+                settings.setdefault('server', DEFAULT_TOURNAMENT_SERVER)
         elif name == 'przejscia-scen.lua':
             default_mic = original.get('AudioInputCapture1', {}).get('name')
             if not default_mic:
@@ -122,6 +133,7 @@ def main():
     parser.add_argument('--collection', help='Nazwa pliku kolekcji w basic/scenes, np. Kolekcja.json')
     parser.add_argument('--destination', type=Path, help='Stały katalog instalacji')
     parser.add_argument('--microphone', help='Dokładna nazwa źródła mikrofonu wyciszanego na przerwie')
+    parser.add_argument('--tournament-server', help='Adres serwera turnieju TTC, np. http://192.168.1.10:3000 (przerwa i sceny według stanu gry)')
     parser.add_argument('--intro', type=Path, help='Własny plik audio odtwarzany raz')
     parser.add_argument('--loop', type=Path, help='Własny plik audio odtwarzany w pętli')
     args = parser.parse_args()
@@ -151,7 +163,10 @@ def main():
     dock['url'] = (target / 'panel.html').as_uri()
     text = ini_set(text, 'BasicWindow', 'ExtraBrowserDocks', json.dumps(docks, ensure_ascii=False, separators=(',', ':')))
     text = ini_set(text, 'Python', 'Path64bit', Path(sys.executable).parent.as_posix())
-    updated = configure_collection(data, target, args.microphone, args.intro, args.loop)
+    tournament = args.tournament_server.strip().rstrip('/') if args.tournament_server else None
+    if tournament is not None and not tournament.startswith(('http://', 'https://')):
+        parser.error('Adres serwera turnieju musi zaczynać się od http:// albo https://')
+    updated = configure_collection(data, target, args.microphone, args.intro, args.loop, tournament)
 
     target.mkdir(parents=True, exist_ok=True)
     backup = target / 'backups' / datetime.now().strftime('%Y%m%d-%H%M%S-%f')

@@ -12,6 +12,7 @@ To zestaw skryptów Lua i Python oraz lokalny panel przeglądarkowy, bez osobnej
 - Scena przerwy: własny GIF lub film w pętli, pierwsze audio raz, następnie drugie audio w pętli. Powrót na scenę ponownie uruchamia początek.
 - Wybrany mikrofon jest wyciszany na przerwie i wraca do wcześniejszego stanu po jej zakończeniu.
 - Podgląd w trybie studia nie uruchamia muzyki; liczy się scena na programie.
+- **Integracja z turniejem TTC** (gałąź `kirs`): OBS czyta stan ekranu widowni z serwera turnieju i sam przełącza sceny. Przerwa techniczna w turnieju włącza scenę przerwy (z ekranem przerwy z turnieju i muzyką z OBS), a po niej OBS wraca na scenę z ekranem turnieju. Szczegóły: [Integracja z turniejem](#integracja-z-turniejem-ttc).
 
 ## Wymagania
 
@@ -34,7 +35,7 @@ OBS WebSocket nie jest wymagany. Panel komunikuje się wyłącznie z lokalnym ad
 4. Uruchom OBS. Pojawią się panel „Przejścia scen” i scena „Przerwa — Beyond the Sea”. Jeśli system zapyta o dostęp serwera do sieci, nie jest on potrzebny do działania panelu na localhost.
 5. W **Narzędzia → Skrypty → przerwa.lua** wybierz własne pliki „Początek — jeden raz” i „Muzyka — pętla”. Właściwości źródła **„Przerwa | GIF — wybierz plik”** służą do wskazania GIF-a lub filmu.
 
-Pliki trafiają do `%LOCALAPPDATA%\OBS-Przejscia`. Instalator dodaje trzy skrypty i panel do aktywnej kolekcji, zachowując istniejące sceny, źródła, filtry i inne skrypty. Przed zmianą zapisuje kopię `user.ini` i pliku kolekcji w podfolderze `backups`. Instalacja nie zmienia konfiguracji WebSocket ani ustawień istniejącego efektu Move.
+Pliki trafiają do `%LOCALAPPDATA%\OBS-Przejscia`. Instalator dodaje cztery skrypty i panel do aktywnej kolekcji, zachowując istniejące sceny, źródła, filtry i inne skrypty. Przed zmianą zapisuje kopię `user.ini` i pliku kolekcji w podfolderze `backups`. Instalacja nie zmienia konfiguracji WebSocket ani ustawień istniejącego efektu Move.
 
 Domyślnie wyciszany jest pierwszy globalny mikrofon OBS; jeśli go nie wykryto, używana jest nazwa „Mikrofon/Wejście liniowe”. Możesz wskazać dokładną nazwę swojego źródła:
 
@@ -51,6 +52,27 @@ py -3.12 install.py --destination "D:\DodatkiOBS\Przejscia"
 ```
 
 Ponowne uruchomienie instalatora aktualizuje skrypty, zachowując zapisane reguły i token panelu. Aby dodać obsługę kolejnej kolekcji, uruchom ją w OBS, zamknij OBS i ponów instalację.
+
+## Integracja z turniejem TTC
+
+Skrypt `turniej.py` łączy OBS z serwerem turnieju (`node server.js`, domyślnie port 3000). OBS na komputerze podłączonym do tablicy obsługuje wtedy główny ekran widowni.
+
+```powershell
+py -3.12 install.py --tournament-server http://192.168.1.10:3000
+```
+
+Adres to komputer z serwerem turnieju w tej samej sieci. Bez opcji skrypt używa `http://localhost:3000` (serwer na tym samym komputerze), a przerwa pokazuje sam GIF. Adres można zmienić później w **Narzędzia → Skrypty → turniej.py** i **przerwa.lua**.
+
+Co robi:
+
+- Tworzy scenę **„Turniej — Ekran”** z jednym źródłem przeglądarkowym `adres/screen?obs=1` na całą planszę. Dźwięki rund (np. Postaw na 2048) trafiają do miksera OBS.
+- Scena **„Przerwa — Beyond the Sea”** dostaje nad GIF-em źródło przeglądarkowe z ekranem przerwy technicznej z turnieju. Muzykę przerwy nadal gra `przerwa.lua`, bo parametr `?obs=1` wyłącza muzykę po stronie strony (żeby nie grały dwie naraz); strona nie pokazuje też podpowiedzi o kliknięciu dla dźwięku.
+- Gdy koordynator włącza przerwę techniczną (między rundami), OBS przechodzi na scenę przerwy zwykłym przejściem z panelu (np. Zanikanie, wyciszenie mikrofonu, muzyka). Gdy rozpoczyna rundę, OBS wraca na „Turniej — Ekran”.
+- W trybie studia scena trafia na podgląd i od razu przechodzi na program.
+- Skrypt tylko czyta publiczny strumień ekranu widowni (`/events?role=screen`), niczego nie wysyła do serwera ani nie potrzebuje hasła koordynatora. Połączenie wznawia się samo po restarcie serwera.
+- Automatyczne przełączanie można wyłączyć we właściwościach skryptu; ręczna zmiana sceny w OBS zostaje do kolejnej zmiany stanu w turnieju.
+
+Nazwy scen można zmienić we właściwościach `turniej.py`. Scena przerwy musi mieć nazwę używaną przez `przerwa.lua` i `przejscia-scen.lua` („Przerwa — Beyond the Sea”), żeby działało wyciszanie mikrofonu i muzyka. Nie sprawdzano tej integracji w samym OBS (tylko odbiór stanu z serwera, testy instalatora i strona z `?obs=1`).
 
 ## Ustawienie przejść
 
@@ -69,7 +91,7 @@ Przy ciężkim GIF-ie warto użyć własnego krótkiego MP4 z zapętlaniem. Jeś
 - Brak wyciszania mikrofonu: uruchom instalator z `--microphone` i dokładną nazwą źródła z miksera.
 - Brak muzyki: wskaż oba pliki audio w ustawieniach `przerwa.lua`. Zmiana pliku bezpośrednio w źródle audio zostanie nadpisana przez skrypt.
 - Muzyka odtwarza się, ale jej nie słychać: po zakończeniu przejścia sprawdź głośność źródła „Przerwa | 1. Początek” oraz źródła pętli. Poziom `−∞ dB` oznacza całkowitą ciszę mimo odtwarzania. W **Zaawansowanych ustawieniach dźwięku** przywróć żądany poziom, np. `0 dB`, a następnie wyjdź z przerwy i wróć na nią. Sprawdź też urządzenie monitorowania, jeśli słuchasz dźwięku przez odsłuch OBS.
-- Aby usunąć dodatek, usuń jego trzy pozycje w **Narzędzia → Skrypty**, usuń własny panel przeglądarkowy „Przejścia scen” i włącz standardowy panel efektów. Scenę przerwy można usunąć osobno.
+- Aby usunąć dodatek, usuń jego cztery pozycje w **Narzędzia → Skrypty**, usuń własny panel przeglądarkowy „Przejścia scen” i włącz standardowy panel efektów. Scenę przerwy można usunąć osobno.
 - Aby przywrócić konfigurację z kopii, zamknij OBS i skopiuj `user.ini` do katalogu konfiguracji, a plik kolekcji do `basic/scenes`. Kopia odtwarza stan z momentu instalacji, więc późniejsze zmiany w tych plikach zostaną zastąpione.
 
 ## Kod i sprawdzanie instalatora
@@ -79,6 +101,7 @@ Przy ciężkim GIF-ie warto użyć własnego krótkiego MP4 z zapętlaniem. Jeś
 | `plugin/przejscia-scen.lua` | Reguły przejść, wyciszanie mikrofonu i obwiednie audio |
 | `plugin/przerwa.lua` | Scena przerwy i kolejność odtwarzania muzyki |
 | `plugin/panel-przejsc.py` | Integracja panelu z OBS i lokalne API |
+| `plugin/turniej.py` | Przełączanie scen według stanu serwera turnieju |
 | `plugin/panel.html` | Interfejs panelu |
 | `install.py` | Instalacja, zależności i kopia konfiguracji |
 

@@ -4,6 +4,8 @@ local gif_name = "Przerwa | GIF — wybierz plik"
 local intro_name = "Przerwa | 1. Początek"
 local loop_name = "Przerwa | 2. Beyond the Sea — pętla"
 local intro_path, loop_path = "", ""
+local tournament_url = ""
+local tournament_name = "Przerwa | Ekran turnieju"
 local phase = "off"
 local ready = false
 local intro_seen_playing = false
@@ -63,6 +65,34 @@ local function add_source(scene, id, name, settings)
     obs.obs_source_release(source)
 end
 
+-- Opcjonalnie: ekran przerwy z serwera turnieju jako źródło przeglądarkowe nad GIF-em.
+-- ?obs=1 wyłącza muzykę strony, bo muzykę przerwy gra ten skrypt.
+local function ensure_tournament_screen(scene)
+    local base = tournament_url:gsub("^%s+", ""):gsub("%s+$", ""):gsub("/+$", "")
+    if base == "" then return end
+    if not base:find("://", 1, true) then base = "http://" .. base end
+    local settings = obs.obs_data_create()
+    local width, height = 1920, 1080
+    local video = obs.obs_video_info()
+    if obs.obs_get_video_info(video) then width, height = video.base_width, video.base_height end
+    obs.obs_data_set_string(settings, "url", base .. "/screen?obs=1")
+    obs.obs_data_set_int(settings, "width", width)
+    obs.obs_data_set_int(settings, "height", height)
+    obs.obs_data_set_bool(settings, "reroute_audio", false)
+    obs.obs_data_set_bool(settings, "shutdown", false)
+    local source = obs.obs_get_source_by_name(tournament_name)
+    if source then
+        obs.obs_source_update(source, settings)
+    else
+        source = obs.obs_source_create("browser_source", tournament_name, settings, nil)
+    end
+    if source then
+        if not obs.obs_scene_find_source(scene, tournament_name) then obs.obs_scene_add(scene, source) end
+        obs.obs_source_release(source)
+    end
+    obs.obs_data_release(settings)
+end
+
 local function ensure_scene()
     local source = obs.obs_get_source_by_name(scene_name)
     local scene
@@ -83,6 +113,7 @@ local function ensure_scene()
     obs.obs_data_set_bool(image, "clear_on_media_end", false)
     add_source(scene, "ffmpeg_source", gif_name, image)
     obs.obs_data_release(image)
+    ensure_tournament_screen(scene)
     for index, spec in ipairs({{intro_name, intro_path}, {loop_name, loop_path}}) do
         local settings = obs.obs_data_create()
         obs.obs_data_set_bool(settings, "is_local_file", true)
@@ -180,6 +211,7 @@ Podgląd w Trybie studia nie uruchamia muzyki; uruchamia ją dopiero przejście 
 end
 
 function script_defaults(settings)
+    obs.obs_data_set_default_string(settings, "tournament_url", "")
     obs.obs_data_set_default_string(settings, "intro", script_path() .. "Poczatek.wav")
     obs.obs_data_set_default_string(settings, "loop", script_path() .. "BeyondTheSea-petla.mp3")
 end
@@ -188,6 +220,7 @@ function script_properties()
     local props = obs.obs_properties_create()
     obs.obs_properties_add_path(props, "intro", "Początek — jeden raz", obs.OBS_PATH_FILE, "Audio (*.wav *.mp3 *.ogg *.flac)", nil)
     obs.obs_properties_add_path(props, "loop", "Muzyka — pętla", obs.OBS_PATH_FILE, "Audio (*.wav *.mp3 *.ogg *.flac)", nil)
+    obs.obs_properties_add_text(props, "tournament_url", "Adres serwera turnieju (ekran przerwy; puste = tylko GIF)", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_button(props, "repair", "Utwórz / napraw scenę", function()
         stop_audio()
         ready = ensure_scene()
@@ -200,6 +233,7 @@ function script_update(settings)
     stop_audio()
     intro_path = obs.obs_data_get_string(settings, "intro")
     loop_path = obs.obs_data_get_string(settings, "loop")
+    tournament_url = obs.obs_data_get_string(settings, "tournament_url")
     ready = false
 end
 
