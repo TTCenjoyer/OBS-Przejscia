@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+runtime/
+backups/
+panel-access.json
+panel-config.js
+przejscia-ustawienia.json
+*.tmp
+*.log
+*.wav
+*.mp3
+*.mp4
+*.mkv
+*.gif
