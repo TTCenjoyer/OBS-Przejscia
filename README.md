@@ -68,6 +68,7 @@ Przy ciężkim GIF-ie warto użyć własnego krótkiego MP4 z zapętlaniem. Jeś
 - Panel nie jest widoczny: sprawdź **Panele → Przejścia scen**. Adres panelu to plik `panel.html` w katalogu instalacji.
 - Brak wyciszania mikrofonu: uruchom instalator z `--microphone` i dokładną nazwą źródła z miksera.
 - Brak muzyki: wskaż oba pliki audio w ustawieniach `przerwa.lua`. Zmiana pliku bezpośrednio w źródle audio zostanie nadpisana przez skrypt.
+- Muzyka odtwarza się, ale jej nie słychać: po zakończeniu przejścia sprawdź głośność źródła „Przerwa | 1. Początek” oraz źródła pętli. Poziom `−∞ dB` oznacza całkowitą ciszę mimo odtwarzania. W **Zaawansowanych ustawieniach dźwięku** przywróć żądany poziom, np. `0 dB`, a następnie wyjdź z przerwy i wróć na nią. Sprawdź też urządzenie monitorowania, jeśli słuchasz dźwięku przez odsłuch OBS.
 - Aby usunąć dodatek, usuń jego trzy pozycje w **Narzędzia → Skrypty**, usuń własny panel przeglądarkowy „Przejścia scen” i włącz standardowy panel efektów. Scenę przerwy można usunąć osobno.
 - Aby przywrócić konfigurację z kopii, zamknij OBS i skopiuj `user.ini` do katalogu konfiguracji, a plik kolekcji do `basic/scenes`. Kopia odtwarza stan z momentu instalacji, więc późniejsze zmiany w tych plikach zostaną zastąpione.
 
