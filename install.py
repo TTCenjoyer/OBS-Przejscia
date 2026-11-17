@@ -134,6 +134,7 @@ def main():
     parser.add_argument('--destination', type=Path, help='Stały katalog instalacji')
     parser.add_argument('--microphone', help='Dokładna nazwa źródła mikrofonu wyciszanego na przerwie')
     parser.add_argument('--tournament-server', help='Adres serwera turnieju TTC, np. http://192.168.1.10:3000 (przerwa i sceny według stanu gry)')
+    parser.add_argument('--skip-dependencies', action='store_true', help='Nie instaluj ponownie PySide6, gdy katalog runtime już istnieje (szybsze ponowne uruchomienie)')
     parser.add_argument('--intro', type=Path, help='Własny plik audio odtwarzany raz')
     parser.add_argument('--loop', type=Path, help='Własny plik audio odtwarzany w pętli')
     args = parser.parse_args()
@@ -176,8 +177,9 @@ def main():
     source = Path(__file__).resolve().parent
     for name in FILES:
         shutil.copy2(source / 'plugin' / name, target / name)
-    subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', '--target', str(target / 'runtime'),
-                    '-r', str(source / 'requirements.txt')], check=True)
+    if not (args.skip_dependencies and (target / 'runtime').is_dir()):
+        subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', '--target', str(target / 'runtime'),
+                        '-r', str(source / 'requirements.txt')], check=True)
     prepare_local_files(target, data)
     # Stop before writing OBS configuration if it was opened during dependency installation.
     if obs_running():

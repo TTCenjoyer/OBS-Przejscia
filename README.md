@@ -55,7 +55,15 @@ Ponowne uruchomienie instalatora aktualizuje skrypty, zachowując zapisane regu�
 
 ## Integracja z turniejem TTC
 
-Skrypt `turniej.py` łączy OBS z serwerem turnieju (`node server.js`, domyślnie port 3000). OBS na komputerze podłączonym do tablicy obsługuje wtedy główny ekran widowni.
+**Najprościej: launcher.** Dwuklik w `Uruchom-OBS.cmd` (przy zamkniętym OBS) instaluje lub aktualizuje dodatki z adresem serwera turnieju i od razu uruchamia OBS. Ustawienia są w `launcher.json`, który powstaje przy pierwszym uruchomieniu (nie trafia do Git):
+
+```json
+{ "server": "https://turniej.kirsiak.com", "obsPath": "", "collection": "", "microphone": "", "intro": "", "loop": "" }
+```
+
+`server` to adres serwera turnieju (na turnieju np. `http://192.168.1.10:3000`), `obsPath` zostaje pusty, jeśli OBS jest w standardowym katalogu, `collection` wybiera kolekcję scen przy starcie, `microphone` to dokładna nazwa mikrofonu wyciszanego na przerwie, a `intro` i `loop` to pliki audio przerwy. Launcher nie zamyka OBS, ostrzega, gdy serwer nie odpowiada (OBS i tak ruszy), a przy kolejnych uruchomieniach nie pobiera ponownie bibliotek. Próba bez instalacji: `Uruchom-OBS.ps1 -DryRun`.
+
+Ręcznie: skrypt `turniej.py` łączy OBS z serwerem turnieju (`node server.js`, domyślnie port 3000). OBS na komputerze podłączonym do tablicy obsługuje wtedy główny ekran widowni.
 
 ```powershell
 py -3.12 install.py --tournament-server http://192.168.1.10:3000
